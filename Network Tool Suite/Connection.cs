@@ -1,28 +1,19 @@
 ﻿using System;
-using System.Collections.Generic;
-using System.Drawing;
-using System.Drawing.Imaging;
 using System.IO;
 using System.IO.Compression;
-using System.Linq;
 using System.Net;
-using System.Net.Http;
 using System.Net.Sockets;
-using System.Security.Cryptography;
-using System.Text;
-using System.Threading.Tasks;
 
 namespace Network_Tool_Suite
 {
     public class Connection
     {
-        public int Port { get; private set; }
+        public int Port { get; }
         public IPAddress IP { get; private set; }
 
-        private const int PacketSize = 8096;
-        private TcpClient client;
+        private TcpClient _client;
 
-        private TcpListener server;
+        private TcpListener _server;
 
         public Connection()
         {
@@ -32,8 +23,8 @@ namespace Network_Tool_Suite
 
         public void CreateServerClient()
         {
-            server = new TcpListener(IPAddress.Any, Port);
-            server.Start();
+            _server = new TcpListener(IPAddress.Any, Port);
+            _server.Start();
         }
 
         public void ConnectToServer(string ipString)
@@ -43,34 +34,42 @@ namespace Network_Tool_Suite
 
         public void SendStream(byte[] byteArray)
         {
-            client = server.AcceptTcpClient();
-            var clientStream = client.GetStream();
-            var comp = Compress(byteArray);
-            clientStream.Write(comp, 0, comp.Length);
-            clientStream.Close();
+            _client = _server.AcceptTcpClient();
+
+            using (var clientStream = _client.GetStream())
+            {
+                var comp = Compress(byteArray);
+                clientStream.Write(comp, 0, comp.Length);
+            }
         }
 
-        public Image ReceiveStream()
+        public byte[] ReceiveStream()
         {
-            client = new TcpClient(IP.ToString(), Port);
-
-            MemoryStream output = new MemoryStream();
-            var clientStream = client.GetStream();
-            using (DeflateStream dstream = new DeflateStream(clientStream, CompressionMode.Decompress))
-            {
-                dstream.CopyTo(output);
-            }
-            return Image.FromStream(output);
+            _client = new TcpClient(IP.ToString(), Port);
+            var stream = _client.GetStream();
+            return Decompress(stream);
         }
 
-        public static byte[] Compress(byte[] data)
+        private static byte[] Compress(byte[] input)
         {
-            MemoryStream output = new MemoryStream();
-            using (DeflateStream dstream = new DeflateStream(output, CompressionLevel.Optimal))
+            using(var compressStream = new MemoryStream())
+            using(var compressor = new DeflateStream(compressStream, CompressionMode.Compress))
             {
-                dstream.Write(data, 0, data.Length);
+                compressor.Write(input, 0, input.Length);
+                compressor.Close();
+                return compressStream.ToArray();
             }
-            return output.ToArray();
+        }
+
+        public static byte[] Decompress(Stream data)
+        {
+            var output = new MemoryStream();
+            using(var zipStream = new DeflateStream(data, CompressionMode.Decompress))
+            {
+                zipStream.CopyTo(output);
+                zipStream.Close();
+                return output.ToArray();
+            }
         }
     }
 }

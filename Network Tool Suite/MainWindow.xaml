@@ -9,7 +9,7 @@
     <Grid>
         <Image x:Name="ImageViewer" Margin="53.682,22.447,69.68,70.572"/>
         <Button Content="Server" HorizontalAlignment="Left" Margin="10,395.066,0,0" VerticalAlignment="Top" Width="75" Click="Start_Server"/>
-        <TextBox x:Name="ipTextBox" HorizontalAlignment="Left" Height="23" Margin="10,372.066,0,0" TextWrapping="Wrap" Text="TextBox" VerticalAlignment="Top" Width="170"/>
+        <TextBox x:Name="ipTextBox" HorizontalAlignment="Left" Height="23" Margin="10,372.066,0,0" TextWrapping="Wrap" Text="127.0.0.1" VerticalAlignment="Top" Width="170"/>
         <Button Content="Client" HorizontalAlignment="Left" Margin="105,395.066,0,0" VerticalAlignment="Top" Width="75" Click="Start_Client"/>
 
     </Grid>
