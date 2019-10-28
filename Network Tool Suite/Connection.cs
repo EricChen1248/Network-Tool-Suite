@@ -8,6 +8,7 @@ namespace Network_Tool_Suite
 {
     public class Connection
     {
+        public bool IsServer;
         public int Port { get; }
         public IPAddress IP { get; private set; }
 
@@ -34,8 +35,7 @@ namespace Network_Tool_Suite
 
         public void SendStream(byte[] byteArray)
         {
-            _client = _server.AcceptTcpClient();
-
+            _client = IsServer ? _server.AcceptTcpClient() : new TcpClient(IP.ToString(), Port);
             using (var clientStream = _client.GetStream())
             {
                 var comp = Compress(byteArray);
@@ -45,7 +45,7 @@ namespace Network_Tool_Suite
 
         public byte[] ReceiveStream()
         {
-            _client = new TcpClient(IP.ToString(), Port);
+            _client = IsServer ? _server.AcceptTcpClient() : new TcpClient(IP.ToString(), Port);
             var stream = _client.GetStream();
             return Decompress(stream);
         }
