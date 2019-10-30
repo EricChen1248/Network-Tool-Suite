@@ -2,12 +2,19 @@
 {
     public static class Helper
     {
-        public static void IntToByte(int num, byte[] bytes)
+        public static unsafe void IntToByte(int num, byte[] bytes)
         {
-            bytes[3] = (byte)(num >> 24);
-            bytes[2] = (byte)(num >> 16);
-            bytes[1] = (byte)(num >> 8);
-            bytes[0] = (byte) num;
+            fixed (byte* pBytes = &bytes[0])
+            {
+                *(int*)pBytes = num;
+            }
+        }
+        public static unsafe int ByteToInt(byte[] bytes)
+        {
+            fixed (byte* pBytes = &bytes[0])
+            {
+                return *(int*)pBytes;
+            }
         }
     }
 }

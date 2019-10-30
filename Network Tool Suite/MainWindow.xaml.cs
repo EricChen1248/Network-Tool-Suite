@@ -2,11 +2,8 @@
 using System.Drawing;
 using System.Drawing.Imaging;
 using System.IO;
-using System.Text.RegularExpressions;
 using System.Threading;
 using System.Windows;
-using System.Windows.Controls;
-using System.Windows.Input;
 using System.Windows.Media.Imaging;
 using System.Windows.Threading;
 
@@ -17,16 +14,18 @@ namespace Network_Tool_Suite
     /// </summary>
     public partial class MainWindow
     {
-        private static int ScreenLeft = 0;
-        private static int ScreenTop = 0;
+        private static int _screenLeft;
+        private static int _screenTop;
         private static readonly int ScreenWidth = 1920;
         private static readonly int ScreenHeight = 1080;
 
         private static Bitmap _bmp = new Bitmap(ScreenWidth, ScreenHeight);
         private static readonly Graphics G = Graphics.FromImage(_bmp);
-        private static Bitmap _bmp2 = new Bitmap(ScreenWidth, ScreenHeight);
-        private static readonly Graphics G2 = Graphics.FromImage(_bmp2);
-        public static MemoryStream Memory = new MemoryStream();
+
+        private static readonly Bitmap Bmp2 = new Bitmap(ScreenWidth, ScreenHeight);
+        private static readonly Graphics G2 = Graphics.FromImage(Bmp2);
+        
+        public static MemoryStream Memory = new MemoryStream(8294400);
         public DispatcherTimer Timer = new DispatcherTimer();
         
         public static Connection Connection;
@@ -37,8 +36,8 @@ namespace Network_Tool_Suite
             Connection = new Connection();
 
             Timer.Interval = TimeSpan.FromSeconds(0.05);
-            Bitmap_Lib.ScreenHeight = ScreenHeight;
-            Bitmap_Lib.Threads = 8;
+            BitmapLib.ScreenHeight = ScreenHeight;
+            BitmapLib.Threads = 8;
 
             DisplayCurrentScreen();
         }
@@ -90,8 +89,8 @@ namespace Network_Tool_Suite
             var oldBmp = new Bitmap(_bmp);
             var bytes = Connection.ReceiveStream();
             _bmp = new Bitmap(ScreenWidth, ScreenHeight);
-            Bitmap_Lib.BytesToBitmapDecompressed(bytes, _bmp);
-            Bitmap_Lib.OverlayBitmap(oldBmp, _bmp);
+            BitmapLib.BytesToBitmapDecompressed(bytes, _bmp);
+            BitmapLib.OverlayBitmap(oldBmp, _bmp);
             oldBmp.Dispose();
 
             Memory.Position = 0;
@@ -113,20 +112,19 @@ namespace Network_Tool_Suite
             Timer.Stop();
 
             var oldBmp = (Bitmap) _bmp.Clone();
-            G.CopyFromScreen(ScreenLeft, ScreenTop, 0, 0, _bmp.Size);
-            Bitmap_Lib.ReduceColor(_bmp);
-            Bitmap_Lib.GetDifferenceImage(_bmp, oldBmp);
-            Connection.SendStream(Bitmap_Lib.BitmapToByteCompressed(oldBmp));
-
+            G.CopyFromScreen(_screenLeft, _screenTop, 0, 0, _bmp.Size);
+            BitmapLib.ReduceAndGetDifference(_bmp, oldBmp);
+            Connection.SendStream(BitmapLib.BitmapToByteCompressed(oldBmp));
+            
             Timer.Start();
         }
 
 
         private void DisplayCurrentScreen()
         {
-            G2.CopyFromScreen(ScreenLeft, ScreenTop, 0, 0, _bmp2.Size);
+            G2.CopyFromScreen(_screenLeft, _screenTop, 0, 0, Bmp2.Size);
 
-            _bmp2.Save(Memory, ImageFormat.Bmp);
+            Bmp2.Save(Memory, ImageFormat.Bmp);
             Memory.Position = 0;
 
             var bitmapImage = new BitmapImage();
@@ -140,13 +138,13 @@ namespace Network_Tool_Suite
         
         private void LeftSlider_ValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
         {
-            ScreenLeft = (int) ((SystemParameters.VirtualScreenWidth - ScreenWidth) * e.NewValue);
+            _screenLeft = (int) ((SystemParameters.VirtualScreenWidth - ScreenWidth) * e.NewValue);
             DisplayCurrentScreen();
         }
 
         private void TopSlider_ValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
         {
-            ScreenTop = (int) ((SystemParameters.VirtualScreenHeight - ScreenHeight) * e.NewValue);
+            _screenTop = (int) ((SystemParameters.VirtualScreenHeight - ScreenHeight) * e.NewValue);
             DisplayCurrentScreen();
         }
     }

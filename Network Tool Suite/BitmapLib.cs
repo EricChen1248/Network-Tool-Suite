@@ -3,16 +3,20 @@ using System.Collections.Generic;
 using System.Drawing;
 using System.Drawing.Imaging;
 using System.Linq;
+using System.Runtime.InteropServices;
 using System.Threading.Tasks;
 
 namespace Network_Tool_Suite
 {
-    public static class Bitmap_Lib
+    public static class BitmapLib
     {
         public static int ScreenHeight;
         public static int Threads;
+        
+        [DllImport("kernel32.dll", EntryPoint = "CopyMemory", SetLastError = false)]
+        public static extern unsafe void CopyMemory(int* dest, int* src, int count);
 
-        public static unsafe void GetDifferenceImage(Bitmap image1, Bitmap image2)
+        public static unsafe void ReduceAndGetDifference(Bitmap image1, Bitmap image2)
         {
             var bounds = new Rectangle(0, 0, image1.Width, image1.Height);
             var bmpDataA = image1.LockBits(bounds, ImageLockMode.ReadWrite, image1.PixelFormat);
@@ -25,19 +29,29 @@ namespace Network_Tool_Suite
             Parallel.For(0, Threads, i =>
             {
                 var offset = nPixels / Threads;
-                for (var j = 0; j < nPixels / Threads; j++)
+
+                var color = new byte[4];
+                for (var j = 0; j < offset; j++)
                 {
                     var index = i * offset + j;
+
+                    // Manual unpacking
+                    Helper.IntToByte(pPixelsA[index], color);
+
+                    // Manual bit shift is faster than BitConverter
+                    pPixelsA[index] = color[0] / 16 | 
+                                          (color[1] / 16 << 8) |  
+                                          (color[2] / 16 << 16) |  
+                                          (color[3] << 24);
+
                     if (pPixelsA[index] == pPixelsB[index])
                     {
-                        pPixelsB[index] = transparent;
-                    }
-                    else
-                    {
-                        pPixelsB[index] = pPixelsA[index];
+                        pPixelsA[index] = transparent;
                     }
                 }
+
             });
+            CopyMemory(pPixelsB, pPixelsA, nPixels);
             image1.UnlockBits(bmpDataA);
             image2.UnlockBits(bmpDataB);
         }
@@ -71,34 +85,6 @@ namespace Network_Tool_Suite
             image2.UnlockBits(bmpDataB);
         }
 
-        public static unsafe void ReduceColor(Bitmap bmp)
-        {
-            var bounds = new Rectangle(0, 0, bmp.Width, bmp.Height);
-            var bmpDataA = bmp.LockBits(bounds, ImageLockMode.ReadWrite, bmp.PixelFormat);
-
-            var height = ScreenHeight;
-            var nPixels = height * bmpDataA.Stride / 4;
-            var pPixelsA = (int*)bmpDataA.Scan0.ToPointer();
-
-            Parallel.For(0, 8, i =>
-            {
-                var offset = nPixels / 8;
-                var start = i * offset;
-                var color = new byte[4];
-                for (var j = 0; j < offset; j++)
-                {
-                    // Manual unpacking
-                    Helper.IntToByte(pPixelsA[start + j], color);
-
-                    // Manual bit shift is faster than BitConverter
-                    pPixelsA[start + j] = color[0] / 16 | 
-                                          (color[1] / 16 << 8) |  
-                                          (color[2] / 16 << 16) |  
-                                          (color[3] << 24);
-                }
-            });
-            bmp.UnlockBits(bmpDataA);
-        }
 
         public static unsafe byte[] BitmapToByteCompressed(Bitmap bmp)
         {
@@ -111,7 +97,7 @@ namespace Network_Tool_Suite
             var compressed = new List<byte>[Threads];
             Parallel.For(0, Threads, i =>
             {
-                compressed[i] = new List<byte>();
+                compressed[i] = new List<byte>(1048576);
 
                 var offset = nPixels / Threads;
                 var start = i * offset;
@@ -151,7 +137,7 @@ namespace Network_Tool_Suite
                         data.Add((byte)(color[1] << 4 | color[0]));
                     }
                 }
-
+                
                 compressed[i].AddRange(BitConverter.GetBytes(count));
                 if (data.Count > 0 && !trans)
                 {
@@ -175,8 +161,8 @@ namespace Network_Tool_Suite
                 numCount[2] = results[results.Count - 2];
                 numCount[3] = results[results.Count - 1];
 
-                var transCount = numCount[0] | numCount[1] << 8 | numCount[2] << 16 | numCount[3] << 24;
-                var nTransCount = BitConverter.ToInt32(compressed[i].Take(4).ToArray(), 0);
+                var transCount = Helper.ByteToInt(numCount);
+                var nTransCount = Helper.ByteToInt(compressed[i].Take(4).ToArray());
                 Helper.IntToByte(transCount + nTransCount, newCountArray);
                 results.RemoveRange(results.Count - 4, 4);
 
@@ -210,7 +196,7 @@ namespace Network_Tool_Suite
                 numCount[2] = bytes[point++];
                 numCount[3] = bytes[point++];
 
-                var count = BitConverter.ToInt32(numCount, 0);
+                var count = Helper.ByteToInt(numCount);
 
                 if (trans)
                 {

@@ -67,7 +67,7 @@
       <DependentUpon>App.xaml</DependentUpon>
       <SubType>Code</SubType>
     </Compile>
-    <Compile Include="Bitmap Lib.cs" />
+    <Compile Include="BitmapLib.cs" />
     <Compile Include="Connection.cs" />
     <Compile Include="Helper.cs" />
     <Compile Include="MainWindow.xaml.cs">
