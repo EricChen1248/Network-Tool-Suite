@@ -7,22 +7,13 @@
         mc:Ignorable="d"
         Title="MainWindow" Height="643.974" Width="800">
     <Grid>
-        <Image x:Name="ImageViewer" Margin="52.682,38.447,70.68,137.949"/>
+        <Image x:Name="ImageViewer" Margin="16.063,38.447,10,94.381" Stretch="Uniform" StretchDirection="DownOnly"/>
         <Button Content="Server" HorizontalAlignment="Left" Margin="16.063,0,0,41.421" VerticalAlignment="Bottom" Width="75" Click="Start_Server"/>
         <TextBox x:Name="ipTextBox" HorizontalAlignment="Left" Height="23" Margin="16.063,0,0,66.381" TextWrapping="Wrap" Text="127.0.0.1" VerticalAlignment="Bottom" Width="170"/>
         <Button Content="Client" HorizontalAlignment="Left" Margin="111.063,0,0,41.421" VerticalAlignment="Bottom" Width="75" Click="Start_Client"/>
         <Button Content="Share Screen" HorizontalAlignment="Left" Margin="16.063,0,0,16.461" VerticalAlignment="Bottom" Width="75" Click="Start_Share"/>
         <Button Content="View Screen" HorizontalAlignment="Left" Margin="111.063,0,0,16.461" VerticalAlignment="Bottom" Width="75" Click="Start_View"/>
-        <Slider HorizontalAlignment="Left" Margin="53.389,0,0,96.949" VerticalAlignment="Bottom" Width="132.674" ValueChanged="LeftSlider_ValueChanged" Maximum="1" SmallChange="0.01" LargeChange="0.1"/>
-        <Slider HorizontalAlignment="Left" Margin="-35.937,0,0,178" VerticalAlignment="Bottom" Width="132.674" RenderTransformOrigin="0.5,0.5" ValueChanged="TopSlider_ValueChanged" SmallChange="0.01" Maximum="1" LargeChange="0.1">
-            <Slider.RenderTransform>
-                <TransformGroup>
-                    <ScaleTransform/>
-                    <SkewTransform/>
-                    <RotateTransform Angle="90"/>
-                    <TranslateTransform/>
-                </TransformGroup>
-            </Slider.RenderTransform>
-        </Slider>
+        <Label x:Name="LengthLabel" Content="Label" HorizontalAlignment="Left" Margin="228.63,577.953,0,0" VerticalAlignment="Top"/>
+
     </Grid>
 </Window>

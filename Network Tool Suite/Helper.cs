@@ -1,4 +1,8 @@
-﻿namespace Network_Tool_Suite
+﻿using System;
+using System.Runtime.InteropServices;
+using System.Windows;
+
+namespace Network_Tool_Suite
 {
     public static class Helper
     {
@@ -16,5 +20,23 @@
                 return *(int*)pBytes;
             }
         }
+
+        
+        [DllImport("user32.dll")]
+        [return: MarshalAs(UnmanagedType.Bool)]
+        internal static extern bool GetCursorPos(ref Win32Point pt);
+        [StructLayout(LayoutKind.Sequential)]
+        internal struct Win32Point
+        {
+            public int X;
+            public int Y;
+        };
+        public static Point GetMousePosition()
+        {
+            var w32Mouse = new Win32Point();
+            GetCursorPos(ref w32Mouse);
+            return new Point(w32Mouse.X, w32Mouse.Y);
+        }
+
     }
 }

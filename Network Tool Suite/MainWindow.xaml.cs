@@ -3,6 +3,7 @@ using System.Drawing;
 using System.Drawing.Imaging;
 using System.IO;
 using System.Threading;
+using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Media.Imaging;
 using System.Windows.Threading;
@@ -14,30 +15,35 @@ namespace Network_Tool_Suite
     /// </summary>
     public partial class MainWindow
     {
+        public static MainWindow Instance;
+
         private static int _screenLeft;
         private static int _screenTop;
-        private static readonly int ScreenWidth = 1920;
-        private static readonly int ScreenHeight = 1080;
+        private static readonly int ScreenWidth = 1920; //1366;
+        private static readonly int ScreenHeight = 1080; //768;
+
+        private static byte[] _buffer;
 
         private static Bitmap _bmp = new Bitmap(ScreenWidth, ScreenHeight);
         private static readonly Graphics G = Graphics.FromImage(_bmp);
-
         private static readonly Bitmap Bmp2 = new Bitmap(ScreenWidth, ScreenHeight);
         private static readonly Graphics G2 = Graphics.FromImage(Bmp2);
         
-        public static MemoryStream Memory = new MemoryStream(8294400);
-        public DispatcherTimer Timer = new DispatcherTimer();
+        private static readonly MemoryStream Memory = new MemoryStream(1_000_000);
+        private readonly DispatcherTimer _timer = new DispatcherTimer();
         
-        public static Connection Connection;
+        private static Connection _connection;
 
+        private static System.Windows.Point _mouseCoords = new System.Windows.Point(0,0);
         public MainWindow()
         {
             InitializeComponent();
-            Connection = new Connection();
+            Instance = this;
+            _connection = new Connection();
 
-            Timer.Interval = TimeSpan.FromSeconds(0.05);
+            _timer.Interval = TimeSpan.FromSeconds(0.05);
             BitmapLib.ScreenHeight = ScreenHeight;
-            BitmapLib.Threads = 8;
+            BitmapLib.Threads = 16;
 
             DisplayCurrentScreen();
         }
@@ -45,30 +51,31 @@ namespace Network_Tool_Suite
         private void Start_Server(object sender, RoutedEventArgs e)
         {
             Title = "Server";
-            Connection.CreateServerClient();
-            Connection.IsServer = true;
+            _connection.CreateServerClient();
+            _connection.IsServer = true;
         }
 
         private void Start_Client(object sender, RoutedEventArgs e)
         {
             Title = "Client";
-            Connection.ConnectToServer(ipTextBox.Text);
-            Connection.IsServer = false;
+            _connection.ConnectToServer(ipTextBox.Text);
+            _connection.IsServer = false;
         }
         
         private void Start_Share(object sender, RoutedEventArgs e)
         {
-            Timer.Tick += Server_Tick;
-            Timer.Start();
+            _timer.Tick += Server_Tick;
+            _timer.Start();
         }
         private void Start_View(object sender, RoutedEventArgs e)
         {
-            Timer.Tick += Client_Tick;
-            Timer.Start();
+            _timer.Tick += Client_Tick;
+            _timer.Start();
         }
         
         private void Server_Tick(object sender, EventArgs e)
         {
+            _timer.Stop();
             var frame = new DispatcherFrame();
             new Thread(() =>
             {
@@ -80,43 +87,68 @@ namespace Network_Tool_Suite
         
         private void Client_Tick(object sender, EventArgs e)
         {
+            _timer.Stop();
             ShowScreen();
         }
 
         private void ShowScreen()
         {
-            Timer.Stop();
-            var oldBmp = new Bitmap(_bmp);
-            var bytes = Connection.ReceiveStream();
-            _bmp = new Bitmap(ScreenWidth, ScreenHeight);
-            BitmapLib.BytesToBitmapDecompressed(bytes, _bmp);
-            BitmapLib.OverlayBitmap(oldBmp, _bmp);
-            oldBmp.Dispose();
+            var oldBmp = _bmp;
+            
+            var t = Task.Factory.StartNew(() =>
+            {
+                if (_buffer == null) return;
 
-            Memory.Position = 0;
-            _bmp.Save(Memory, ImageFormat.Bmp);
-            Memory.Position = 0;
+                _bmp = new Bitmap(ScreenWidth, ScreenHeight);
+                BitmapLib.BytesToBitmapDecompressed(_buffer, _bmp);
+                BitmapLib.OverlayBitmap(oldBmp, _bmp);
+                oldBmp.Dispose();
 
-            var bitmapImage = new BitmapImage();
-            bitmapImage.BeginInit();
-            bitmapImage.CacheOption = BitmapCacheOption.OnLoad;
-            bitmapImage.StreamSource = Memory;
-            bitmapImage.EndInit();
+                Memory.Position = 0;
+                _bmp.Save(Memory, ImageFormat.Bmp);
+                Memory.Position = 0;
 
-            ImageViewer.Source = bitmapImage;
-            Timer.Start();
+                
+            });
+
+            var bytes = _connection.ReceiveStream();
+
+
+            t.Wait();
+            if (_buffer != null)
+            {
+                var bitmapImage = new BitmapImage();
+                bitmapImage.BeginInit();
+                bitmapImage.CacheOption = BitmapCacheOption.OnLoad;
+                bitmapImage.StreamSource = Memory;
+                bitmapImage.EndInit();
+                ImageViewer.Source = bitmapImage;
+            }
+            
+            _buffer = bytes;
+            _timer.Start();
         }
 
         private void SendScreen()
         {
-            Timer.Stop();
+            _mouseCoords = Helper.GetMousePosition();
 
-            var oldBmp = (Bitmap) _bmp.Clone();
-            G.CopyFromScreen(_screenLeft, _screenTop, 0, 0, _bmp.Size);
-            BitmapLib.ReduceAndGetDifference(_bmp, oldBmp);
-            Connection.SendStream(BitmapLib.BitmapToByteCompressed(oldBmp));
+            var tempBmp = (Bitmap) _bmp.Clone();
+            var newBmp = new Bitmap(ScreenWidth, ScreenHeight);
+
+            var t = Task.Factory.StartNew( () => {
+                var g = Graphics.FromImage(newBmp);
+                g.CopyFromScreen(_screenLeft, _screenTop, 0, 0, newBmp.Size);
+                g.DrawIcon(new Icon("mouse.ico"),(int) _mouseCoords.X - _screenLeft - 10,(int) _mouseCoords.Y - _screenTop);
+                BitmapLib.ReduceAndGetDifference(newBmp, tempBmp);
+            } );
             
-            Timer.Start();
+            _connection.SendStream(BitmapLib.BitmapToByteCompressed(_bmp));
+
+            t.Wait();
+            _bmp = newBmp;
+
+            _timer.Start();
         }
 
 
@@ -136,16 +168,5 @@ namespace Network_Tool_Suite
             ImageViewer.Source = bitmapImage;
         }
         
-        private void LeftSlider_ValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
-        {
-            _screenLeft = (int) ((SystemParameters.VirtualScreenWidth - ScreenWidth) * e.NewValue);
-            DisplayCurrentScreen();
-        }
-
-        private void TopSlider_ValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
-        {
-            _screenTop = (int) ((SystemParameters.VirtualScreenHeight - ScreenHeight) * e.NewValue);
-            DisplayCurrentScreen();
-        }
     }
 }

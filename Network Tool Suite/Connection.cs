@@ -3,6 +3,7 @@ using System.IO;
 using System.IO.Compression;
 using System.Net;
 using System.Net.Sockets;
+using LZ4;
 
 namespace Network_Tool_Suite
 {
@@ -13,9 +14,9 @@ namespace Network_Tool_Suite
         public IPAddress IP { get; private set; }
 
         private TcpClient _client;
+        private NetworkStream _stream;
 
         private TcpListener _server;
-
         public Connection()
         {
             Port = 45645;
@@ -26,34 +27,51 @@ namespace Network_Tool_Suite
         {
             _server = new TcpListener(IPAddress.Any, Port);
             _server.Start();
+            IsServer = true;
+            _client = IsServer ? _server.AcceptTcpClient() : new TcpClient(IP.ToString(), Port);
+            _stream = _client.GetStream();
+            
         }
 
         public void ConnectToServer(string ipString)
         {
             IP = IPAddress.Parse(ipString);
+            IsServer = false;
+            _client = IsServer ? _server.AcceptTcpClient() : new TcpClient(IP.ToString(), Port);
+            _stream = _client.GetStream();
         }
 
         public void SendStream(byte[] byteArray)
         {
-            _client = IsServer ? _server.AcceptTcpClient() : new TcpClient(IP.ToString(), Port);
-            using (var clientStream = _client.GetStream())
-            {
-                var comp = Compress(byteArray);
-                clientStream.Write(comp, 0, comp.Length);
-            }
+            var comp = Compress(byteArray);
+            _stream.Write(BitConverter.GetBytes(comp.Length), 0, 4);
+            _stream.Write(comp, 0, comp.Length);
         }
 
         public byte[] ReceiveStream()
         {
-            _client = IsServer ? _server.AcceptTcpClient() : new TcpClient(IP.ToString(), Port);
-            var stream = _client.GetStream();
-            return Decompress(stream);
+            var lengthByte = new byte[4];
+            _stream.Read(lengthByte, 0, 4);
+            var length = Helper.ByteToInt(lengthByte);
+            var data = new byte[length];
+            var read = 0;
+            while (true)
+            {
+                var i = _stream.Read(data, read, length - read);
+                read += i;
+                if (read == length)
+                {
+                    break;
+                }
+            }
+
+            return Decompress(new MemoryStream(data));
         }
 
         private static byte[] Compress(byte[] input)
         {
-            using(var compressStream = new MemoryStream())
-            using(var compressor = new DeflateStream(compressStream, CompressionMode.Compress))
+            using(var compressStream = new MemoryStream(input.Length))
+            using(var compressor = new LZ4Stream(compressStream, CompressionMode.Compress, blockSize: 1024 * 1024 * 20))
             {
                 compressor.Write(input, 0, input.Length);
                 compressor.Close();
@@ -64,11 +82,12 @@ namespace Network_Tool_Suite
         public static byte[] Decompress(Stream data)
         {
             var output = new MemoryStream();
-            using(var zipStream = new DeflateStream(data, CompressionMode.Decompress))
+            using(var zipStream = new LZ4Stream(data, CompressionMode.Decompress))
             {
                 zipStream.CopyTo(output);
                 zipStream.Close();
                 return output.ToArray();
+                
             }
         }
     }

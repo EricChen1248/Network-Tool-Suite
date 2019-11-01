@@ -36,7 +36,11 @@ namespace Network_Tool_Suite
                     var index = i * offset + j;
 
                     // Manual unpacking
-                    Helper.IntToByte(pPixelsA[index], color);
+                    fixed (byte* pBytes = &color[0])
+                    {
+                        *(int*)pBytes = pPixelsA[index];
+                    }
+                    //Helper.IntToByte(pPixelsA[index], color);
 
                     // Manual bit shift is faster than BitConverter
                     pPixelsA[index] = color[0] / 16 | 
@@ -51,7 +55,6 @@ namespace Network_Tool_Suite
                 }
 
             });
-            CopyMemory(pPixelsB, pPixelsA, nPixels);
             image1.UnlockBits(bmpDataA);
             image2.UnlockBits(bmpDataB);
         }
@@ -109,7 +112,12 @@ namespace Network_Tool_Suite
                 var countByte = new byte[4];
                 for (var j = 0; j < offset; j++)
                 {
-                    Helper.IntToByte(pPixelsA[start + j], color);
+                    fixed (byte* pBytes = &color[0])
+                    {
+                        *(int*)pBytes = pPixelsA[start + j];
+                    }
+                    //Helper.IntToByte(pPixelsA[start + j], color);
+                    
                     if (color[3] == 0) // Transparent
                     {
                         if(!trans)
@@ -151,25 +159,13 @@ namespace Network_Tool_Suite
             bmp.UnlockBits(bmpData);
 
             var results = new List<byte>();
-            var numCount = new byte[4];
-            var newCountArray = new byte[4];
-            results.AddRange(compressed[0]);
-            for (var i = 1; i < Threads; i++)
+            for (int i = 0; i < Threads; i++)
             {
-                numCount[0] = results[results.Count - 4];
-                numCount[1] = results[results.Count - 3];
-                numCount[2] = results[results.Count - 2];
-                numCount[3] = results[results.Count - 1];
+                results.AddRange(BitConverter.GetBytes(compressed[i].Count));
+            }
 
-                var transCount = Helper.ByteToInt(numCount);
-                var nTransCount = Helper.ByteToInt(compressed[i].Take(4).ToArray());
-                Helper.IntToByte(transCount + nTransCount, newCountArray);
-                results.RemoveRange(results.Count - 4, 4);
-
-                for (var j = 0; j < 4; j++)
-                {
-                    compressed[i][j] = newCountArray[j];
-                }
+            for (int i = 0; i < Threads; i++)
+            {
                 results.AddRange(compressed[i]);
             }
 
@@ -182,46 +178,61 @@ namespace Network_Tool_Suite
             var bmpData = bmp.LockBits(bounds, ImageLockMode.ReadWrite, bmp.PixelFormat);
             
             var pPixelsA = (int*)bmpData.Scan0.ToPointer();
-
-            var point = 0;
-            var index = 0;
-
-            var trans = true;
-            var numCount = new byte[4];
+            var nPixels = ScreenHeight * bmpData.Stride / 4;
             var transparent = Color.Transparent.ToArgb();
-            while(point < bytes.Length)
+
+            var size = new int[Threads];
+            for (int i = 0; i < Threads; i++)
             {
-                numCount[0] = bytes[point++];
-                numCount[1] = bytes[point++];
-                numCount[2] = bytes[point++];
-                numCount[3] = bytes[point++];
-
-                var count = Helper.ByteToInt(numCount);
-
-                if (trans)
-                {
-                    for (var i = 0; i < count; i++)
-                    {
-                        pPixelsA[index++] = transparent;
-                    }
-                    trans = false;
-                }
-                else
-                {
-                    for (var i = 0; i < count; i++)
-                    {
-                        var r = bytes[point++];
-                        var gb = bytes[point++];
-                        var g = gb >> 4;
-                        var b = gb - (g << 4);
-                        pPixelsA[index++] = Color.FromArgb(255, 
-                            r * 16, 
-                            g * 16, 
-                            b * 16).ToArgb();
-                    }
-                    trans = true;
-                }
+                size[i] = BitConverter.ToInt32(bytes, i * 4);
             }
+
+            Parallel.For(0, Threads, i =>
+            {
+                var trans = true;
+                var start = Threads * 4;
+                for (int j = 0; j < i; j++)
+                {
+                    start += size[j];
+                }
+
+                var point = 0;
+                var index = nPixels / Threads * i;
+                var numCount = new byte[4];
+                while(point < size[i])
+                {
+                    numCount[0] = bytes[start + point++];
+                    numCount[1] = bytes[start + point++];
+                    numCount[2] = bytes[start + point++];
+                    numCount[3] = bytes[start + point++];
+
+                    var count = Helper.ByteToInt(numCount);
+
+                    if (trans)
+                    {
+                        for (var j = 0; j < count; j++)
+                        {
+                            pPixelsA[index++] = transparent;
+                        }
+
+                        trans = false;
+                    }
+                    else
+                    {
+                        for (var j = 0; j < count; j++)
+                        {
+                            var r = bytes[start + point++] * 16;
+                            var gb = bytes[start + point++];
+                            var g = gb >> 4;
+                            var b = (gb - (g << 4)) * 16;
+                            pPixelsA[index++] = b | ((g * 16) << 8) | (r << 16) | (255 << 24);
+                        }
+
+                        //Color.FromArgb(255, r, g * 16, b).ToArgb();
+                        trans = true;
+                    }
+                }
+            });
 
             bmp.UnlockBits(bmpData);
         }
