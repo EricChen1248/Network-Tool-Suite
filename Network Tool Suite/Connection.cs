@@ -71,7 +71,7 @@ namespace Network_Tool_Suite
         private static byte[] Compress(byte[] input)
         {
             using(var compressStream = new MemoryStream(input.Length))
-            using(var compressor = new LZ4Stream(compressStream, CompressionMode.Compress, blockSize: 1024 * 1024 * 20))
+            using(var compressor = new LZ4Stream(compressStream, CompressionMode.Compress, blockSize: 1024 * 1024 * 80))
             {
                 compressor.Write(input, 0, input.Length);
                 compressor.Close();

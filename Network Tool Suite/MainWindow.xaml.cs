@@ -41,7 +41,7 @@ namespace Network_Tool_Suite
             Instance = this;
             _connection = new Connection();
 
-            _timer.Interval = TimeSpan.FromSeconds(0.05);
+            _timer.Interval = TimeSpan.FromSeconds(0.01);
             BitmapLib.ScreenHeight = ScreenHeight;
             BitmapLib.Threads = 16;
 
@@ -64,8 +64,10 @@ namespace Network_Tool_Suite
         
         private void Start_Share(object sender, RoutedEventArgs e)
         {
+            _buffer = BitmapLib.BitmapToByteCompressed(_bmp);
             _timer.Tick += Server_Tick;
             _timer.Start();
+
         }
         private void Start_View(object sender, RoutedEventArgs e)
         {
@@ -91,32 +93,13 @@ namespace Network_Tool_Suite
             ShowScreen();
         }
 
+        private static Task t;
+        private static byte[] _buffer2;
         private void ShowScreen()
         {
-            var oldBmp = _bmp;
-            
-            var t = Task.Factory.StartNew(() =>
+            if (t != null)
             {
-                if (_buffer == null) return;
-
-                _bmp = new Bitmap(ScreenWidth, ScreenHeight);
-                BitmapLib.BytesToBitmapDecompressed(_buffer, _bmp);
-                BitmapLib.OverlayBitmap(oldBmp, _bmp);
-                oldBmp.Dispose();
-
-                Memory.Position = 0;
-                _bmp.Save(Memory, ImageFormat.Bmp);
-                Memory.Position = 0;
-
-                
-            });
-
-            var bytes = _connection.ReceiveStream();
-
-
-            t.Wait();
-            if (_buffer != null)
-            {
+                t.Wait();
                 var bitmapImage = new BitmapImage();
                 bitmapImage.BeginInit();
                 bitmapImage.CacheOption = BitmapCacheOption.OnLoad;
@@ -125,29 +108,47 @@ namespace Network_Tool_Suite
                 ImageViewer.Source = bitmapImage;
             }
             
-            _buffer = bytes;
+            t = Task.Factory.StartNew(() =>
+                {
+                    if (_buffer == null)
+                    {
+                        t = null;
+                        return;
+                    }
+
+                    var b2 = _buffer;
+                    var oldBmp = _bmp;
+                    _bmp = new Bitmap(ScreenWidth, ScreenHeight);
+                    BitmapLib.BytesToBitmapDecompressed(b2, _bmp);
+                    BitmapLib.OverlayBitmap(oldBmp, _bmp);
+                    oldBmp.Dispose();
+
+                    Memory.Position = 0;
+                    _bmp.Save(Memory, ImageFormat.Bmp);
+                    Memory.Position = 0;
+                }
+            );
+            
+            _buffer = _connection.ReceiveStream();
             _timer.Start();
         }
 
         private void SendScreen()
         {
             _mouseCoords = Helper.GetMousePosition();
+            t?.Wait();
 
-            var tempBmp = (Bitmap) _bmp.Clone();
-            var newBmp = new Bitmap(ScreenWidth, ScreenHeight);
-
-            var t = Task.Factory.StartNew( () => {
-                var g = Graphics.FromImage(newBmp);
-                g.CopyFromScreen(_screenLeft, _screenTop, 0, 0, newBmp.Size);
-                g.DrawIcon(new Icon("mouse.ico"),(int) _mouseCoords.X - _screenLeft - 10,(int) _mouseCoords.Y - _screenTop);
-                BitmapLib.ReduceAndGetDifference(newBmp, tempBmp);
-            } );
-            
-            _connection.SendStream(BitmapLib.BitmapToByteCompressed(_bmp));
-
+            t = Task.Factory.StartNew(() =>
+            {
+                var tempBmp = (Bitmap) _bmp.Clone();
+                G.CopyFromScreen(_screenLeft, _screenTop, 0, 0, _bmp.Size);
+                G.DrawIcon(new Icon("mouse.ico"), (int) _mouseCoords.X - _screenLeft - 10,
+                    (int) _mouseCoords.Y - _screenTop);
+                BitmapLib.ReduceAndGetDifference(_bmp, tempBmp);
+                _buffer = BitmapLib.BitmapToByteCompressed(_bmp);
+            });
+            _connection.SendStream(_buffer);
             t.Wait();
-            _bmp = newBmp;
-
             _timer.Start();
         }
 
